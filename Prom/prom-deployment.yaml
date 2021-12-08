@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus-server
+  namespace: local
+  labels:
+    app: prometheus-server
+spec:
+  serviceName: prometheus-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-server
+  template:
+    metadata:
+      labels:
+        app: prometheus-server
+    spec:
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ["chown", "-R", "65534:65534", "/prometheus"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+          - name: prometheus-local-data
+            mountPath: /prometheus
+      containers:
+        - name: prometheus-data
+          image: us-central1-docker.pkg.dev/gcp-sfhp-logmon-demo/hello-repo/prometheus:v1
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus/"
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus/
+            - name: prometheus-local-data
+              mountPath: /prometheus
+      volumes:
+        - name: prometheus-config-volume
+          configMap:
+            defaultMode: 420
+            name: prometheus-server-conf
+  volumeClaimTemplates:
+  - metadata:
+      name: prometheus-local-data
+      labels:
+        app: prometheus-server
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: elk
+      resources:
+        requests:
+          storage: 50Gi
