@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-configmap
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+  logstash.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+      google_pubsub {
+        type => "pubsub"
+        project_id => "gcp-sfhp-logmon-demo"
+        topic => "stackdriver-logs-pub"
+        subscription => "stackdriver-logs-pub-sub"
+        json_key_file => "/etc/logstash/keys/logstash-sa.json"
+        codec => "json"
+      }
+    }
+    filter {
+    }
+    output {
+      elasticsearch {
+        hosts => [ "http://elasticsearch.default.svc.cluster.local:9200" ]
+      }
+    }
+
+
+
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: logstash
+  labels:
+    app: logstash
+spec:
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      hostname: logstash
+      containers:
+      - name: logstash
+        ports:
+          - containerPort: 5044
+            name: filebeat
+          - containerPort: 9600
+            name: logstash
+        image: us-central1-docker.pkg.dev/gcp-sfhp-logmon-demo/hello-repo/logstash:v1
+        volumeMounts:
+        - name: logstash-pipeline-config
+          mountPath: /usr/share/logstash/config
+        - name: logstash-pipeline-volume
+          mountPath: /usr/share/logstash/pipeline
+        - name: logstash-sa
+          mountPath: "/etc/logstash/keys"
+        command:
+        - logstash
+      volumes:
+      - name: logstash-pipeline-config
+        configMap:
+          name: logstash-configmap
+          items:
+          - key: logstash.yml
+            path: logstash.yml
+      - name: logstash-pipeline-volume
+        configMap:
+          name: logstash-configmap
+          items:
+          - key: logstash.conf
+            path: logstash.conf
+      - name: logstash-sa
+        secret:
+          secretName: logstash-sa
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: logstash
+spec:
+  type: NodePort
+  selector:
+    app: logstash
+  ports:
+  - protocol: TCP
+    port: 5044
+    targetPort: 5044
+    nodePort: 30102
+    name: filebeat
+  - protocol: TCP
+    port: 9600
+    targetPort: 9600
+    name: logstash
+---
