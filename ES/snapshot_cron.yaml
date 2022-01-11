@@ -1,0 +1,21 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: elasticsearch-sample-snapshotter
+  namespace: elk
+spec:
+  schedule: "0 18 * * * "
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: snapshotter
+            image: centos:7
+            command:
+            - /bin/bash
+            args:
+            - -c
+            - 'curl -s -i -k -XPUT "http://elasticsearch.elk.svc.cluster.local:9200/_snapshot/gcs/cron_snapshot" | tee /dev/stderr | grep "200 OK"'
+          restartPolicy: OnFailure
